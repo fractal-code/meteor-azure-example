@@ -1,6 +1,11 @@
 #!/bin/bash
 
 # ----------------------
+# Meteor Azure
+# Version: 1.0.0
+# ----------------------
+
+# ----------------------
 # KUDU Deployment Script
 # Version: 1.0.8
 # ----------------------
@@ -104,14 +109,14 @@ fi
 
 # Install Meteor
 if [ ! -e "$LOCALAPPDATA\.meteor\meteor.bat" ]; then
-  echo Installing Meteor
+  echo meteor-azure: Installing Meteor
   curl -L -o meteor.tar.gz "https://packages.meteor.com/bootstrap-link?arch=os.windows.x86_32"
   tar -zxf meteor.tar.gz -C "$LOCALAPPDATA"
   rm meteor.tar.gz
 fi
 
 # Generate Meteor build
-echo Building app
+echo meteor-azure: Building app
 cmd //c "$LOCALAPPDATA\.meteor\meteor.bat" npm install --production
 cmd //c "$LOCALAPPDATA\.meteor\meteor.bat" build "$DEPLOYMENT_TEMP\output" --directory
 cp .config/azure/web.config "$DEPLOYMENT_TEMP\output\bundle"
@@ -137,19 +142,21 @@ if [ -e "$DEPLOYMENT_TARGET/programs/server/package.json" ]; then
 
   # Install JSON tool
   if ! hash json 2>/dev/null; then
-    echo Installing JSON tool
+    echo meteor-azure: Installing JSON tool
     eval $NPM_CMD install -g json
   fi
 
   # Prepare package.json
+  echo meteor-azure: Preparing package.json
   json -f package.json -e "this.main='../../main.js';this.scripts={ start: 'node ../../main' }" > temp-package.json
   rm package.json
   cmd //c rename temp-package.json package.json
 
+  echo meteor-azure: Installing NPM packages
   eval $NPM_CMD install --production
   exitWithMessageOnError "npm failed"
   cd - > /dev/null
 fi
 
 ##################################################################################################################################
-echo "Finished successfully."
+echo "meteor-azure: Finished successfully."
