@@ -2,7 +2,7 @@
 
 # ----------------------
 # Meteor Azure
-# Version: 1.2.2
+# Version: 1.3.0
 # ----------------------
 
 # ----------------------
@@ -50,6 +50,10 @@ if [ ! -e "$DEPLOYMENT_SOURCE\.config\azure\web.config" ]; then
 fi
 if [ $SCM_COMMAND_IDLE_TIMEOUT != 7200 ]; then
   echo "meteor-azure: WARNING! Not using recommended 'SCM_COMMAND_IDLE_TIMEOUT' (build may abort unexpectedly)"
+fi
+if [ ! -d "$DEPLOYMENT_SOURCE\\$METEOR_AZURE_ROOT.meteor" ]; then
+  echo "meteor-azure: ERROR! Could not find Meteor project directory (consider specifying 'METEOR_AZURE_ROOT')"
+  exit 1
 fi
 if [[ ! -v METEOR_AZURE_NODE_VERSION ]]; then
   echo "meteor-azure: ERROR! You must specify App Setting 'METEOR_AZURE_NODE_VERSION'"
@@ -108,7 +112,7 @@ echo "meteor-azure: Now using NPM v$(npm -v)"
 # Compilation
 # ------------
 
-cd "$DEPLOYMENT_SOURCE"
+cd "$DEPLOYMENT_SOURCE\\$METEOR_AZURE_ROOT"
 
 # Ensure working directory is clean
 if [ -d "$LOCALAPPDATA\meteor-azure" ]; then
