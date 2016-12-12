@@ -2,7 +2,7 @@
 
 # ----------------------
 # Meteor Azure
-# Version: 1.3.0
+# Version: 1.3.1
 # ----------------------
 
 # ----------------------
@@ -123,7 +123,7 @@ fi
 echo meteor-azure: Building app
 npm install --production
 cmd //c D:/home/meteor-azure/.meteor/meteor.bat build "$LOCALAPPDATA\meteor-azure" --directory
-cp .config/azure/web.config "$LOCALAPPDATA\meteor-azure\bundle"
+cp "$DEPLOYMENT_SOURCE\.config\azure\web.config" "$LOCALAPPDATA\meteor-azure\bundle"
 
 ##################################################################################################################################
 # Deployment
