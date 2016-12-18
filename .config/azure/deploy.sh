@@ -2,7 +2,7 @@
 
 # ----------------------
 # Meteor Azure
-# Version: 1.4.0
+# Version: 1.4.2
 # ----------------------
 
 # ----------------------
@@ -10,19 +10,8 @@
 # Version: 1.0.8
 # ----------------------
 
-# Helpers
-# -------
-
-exitWithMessageOnError () {
-  if [ ! $? -eq 0 ]; then
-    echo "An error has occurred during web site deployment."
-    echo $1
-    exit 1
-  fi
-}
-
-# Setup
-# -----
+# Environment
+# ------
 
 SCRIPT_DIR="${BASH_SOURCE[0]%\\*}"
 SCRIPT_DIR="${SCRIPT_DIR%/*}"
@@ -38,11 +27,8 @@ else
   KUDU_SERVICE=true
 fi
 
-# Prerequisites
-# ------------
-
 # Validate configuration
-if [ -e "$DEPLOYMENT_SOURCE\iisnode.yml" ]; then
+if [ -e "$DEPLOYMENT_SOURCE\.config\azure\iisnode.yml" ]; then
   echo "meteor-azure: WARNING! iisnode.yml will not be respected, please move configuration to web.config"
 fi
 if [ ! -e "$DEPLOYMENT_SOURCE\.config\azure\web.config" ]; then
@@ -71,7 +57,7 @@ if [[ ! -v ROOT_URL ]]; then
   exit 1
 fi
 
-# Prepare installation scope
+# Prepare cache directory
 if [[ -v METEOR_AZURE_NOCACHE && -d D:/home/meteor-azure ]]; then
   echo "meteor-azure: Clearing cache"
   rm -rf D:/home/meteor-azure
@@ -79,6 +65,10 @@ fi
 if [ ! -d D:/home/meteor-azure ]; then
   mkdir D:/home/meteor-azure
 fi
+
+# Setup
+# ------------
+
 cd D:/home/meteor-azure;
 
 # Install Meteor
@@ -88,6 +78,7 @@ if [ ! -e .meteor/meteor.bat ]; then
   tar -zxf meteor.tar.gz
   rm meteor.tar.gz
 fi
+export PATH="$HOME/meteor-azure/.meteor:$PATH"
 
 # Install NVM
 if [ ! -d nvm ]; then
@@ -98,7 +89,7 @@ if [ ! -d nvm ]; then
   (echo root: D:/home/meteor-azure/nvm && echo proxy: none) > nvm/settings.txt
 fi
 
-# Set Node version
+# Install custom Node
 echo meteor-azure: Setting Node version
 export NVM_HOME=D:/home/meteor-azure/nvm
 nvm/nvm.exe install $METEOR_AZURE_NODE_VERSION 32
@@ -108,65 +99,73 @@ fi
 export PATH="$HOME/meteor-azure/nvm/v$METEOR_AZURE_NODE_VERSION:$PATH"
 echo "meteor-azure: Now using Node $(node -v) (32-bit)"
 
-# Set NPM version
+# Install custom NPM
 echo meteor-azure: Setting NPM version
 if [ "$(npm -v)" != "$METEOR_AZURE_NPM_VERSION" ]; then
   cmd //c npm install -g "npm@$METEOR_AZURE_NPM_VERSION"
-  exitWithMessageOnError "setting npm version failed"
 fi
 echo "meteor-azure: Now using NPM v$(npm -v)"
+
+# Install JSON tool
+if ! hash json 2>/dev/null; then
+  echo meteor-azure: Installing JSON tool
+  npm install -g json
+fi
+
+# Validate setup
+if [ "$(node -v)" != "v$METEOR_AZURE_NODE_VERSION" ]; then
+  echo "ERROR! Could not install Node"
+  exit 1
+fi
+if [ "$(npm -v)" != "$METEOR_AZURE_NPM_VERSION" ]; then
+  echo "ERROR! Could not install NPM"
+  exit 1
+fi
+if ! hash json 2>/dev/null; then
+  echo "ERROR! Could not install JSON tool"
+  exit 1
+fi
 
 # Compilation
 # ------------
 
 cd "$DEPLOYMENT_SOURCE\\$METEOR_AZURE_ROOT"
 
-# Ensure working directory is clean
-if [ -d "$LOCALAPPDATA\meteor-azure" ]; then
-  rm -rf "$LOCALAPPDATA\meteor-azure"
-fi
+# Install NPM dependencies
+echo meteor-azure: Installing NPM dependencies
+npm install --production
 
 # Generate Meteor build
 echo meteor-azure: Building app
-npm install --production
-cmd //c D:/home/meteor-azure/.meteor/meteor.bat build "$LOCALAPPDATA\meteor-azure" --directory
-cp "$DEPLOYMENT_SOURCE\.config\azure\web.config" "$LOCALAPPDATA\meteor-azure\bundle"
+if [ -d "$DEPLOYMENT_TEMP\bundle" ]; then
+  echo meteor-azure: Cleaning build directory
+  rm -rf "$DEPLOYMENT_TEMP\bundle"
+fi
+cmd //c meteor build "%DEPLOYMENT_TEMP%" --directory --server-only
+cp "$DEPLOYMENT_SOURCE\.config\azure\web.config" "$DEPLOYMENT_TEMP\bundle"
 
-##################################################################################################################################
+# Set Node runtime
+echo meteor-azure: Setting Node runtime
+cd "$DEPLOYMENT_TEMP\bundle"
+(echo nodeProcessCommandLine: "D:\home\meteor-azure\nvm\v$METEOR_AZURE_NODE_VERSION\node.exe") > iisnode.yml
+
+# Set entry-point
+echo meteor-azure: Setting entry-point
+cd "$DEPLOYMENT_TEMP\bundle\programs\server"
+json -f package.json -e "this.main='../../main.js';this.scripts={ start: 'node ../../main' }" > temp-package.json
+rm package.json
+cmd //c rename temp-package.json package.json
+
 # Deployment
 # ----------
 
-# 1. Set Node runtime
-echo meteor-azure: Setting Node runtime
-cd "$LOCALAPPDATA\meteor-azure\bundle"
-(echo nodeProcessCommandLine: "D:\home\meteor-azure\nvm\v$METEOR_AZURE_NODE_VERSION\node.exe") > iisnode.yml
-
-# 2. Sync bundle
+# Sync bundle
 echo meteor-azure: Deploying bundle
-cd "$LOCALAPPDATA\meteor-azure"
-robocopy bundle "$DEPLOYMENT_TARGET" //mir //nfl //ndl //njh //njs //nc //ns //np > /dev/null
+robocopy "$DEPLOYMENT_TEMP\bundle" $DEPLOYMENT_TARGET //mt:16 //mir //nfl //ndl //njh //njs //nc //ns //np > /dev/null
 
-# 3. Install NPM packages
-if [ -e "$DEPLOYMENT_TARGET\programs\server\package.json" ]; then
-  cd "$DEPLOYMENT_TARGET\programs\server"
+# Install Meteor server
+echo meteor-azure: Installing Meteor server
+cd "$DEPLOYMENT_TARGET\programs\server"
+npm install --production
 
-  # Ensure JSON tool is installed
-  if ! hash json 2>/dev/null; then
-    echo meteor-azure: Installing JSON tool
-    npm install -g json
-  fi
-
-  # Prepare package.json
-  echo meteor-azure: Preparing package.json
-  json -f package.json -e "this.main='../../main.js';this.scripts={ start: 'node ../../main' }" > temp-package.json
-  rm package.json
-  cmd //c rename temp-package.json package.json
-
-  echo meteor-azure: Installing NPM packages
-  npm install --production
-  exitWithMessageOnError "npm failed"
-  cd - > /dev/null
-fi
-
-##################################################################################################################################
 echo meteor-azure: Finished successfully
